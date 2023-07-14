@@ -28,8 +28,8 @@ def start(message):
         for object_person in notification_array:
             if object_person['answerTime'] not in ['Done', 'Not Done', 'Ignored']:
                 print(object_person)
-                start_time = datetime.strptime('07/14/23 13:55:26', '%m/%d/%y %H:%M:%S')
-                end_time = start_time + timedelta(0, 60 * object_person['answerTime'])
+                start_time = datetime.strptime(object_person['date'] + ' ' + object_person['time'], '%m/%d/%y %H:%M:%S')
+                end_time = start_time + timedelta(minutes=object_person['answerTime'])
                 print(end_time)
                 if datetime.now() > end_time:
                     print('Yes')
@@ -38,26 +38,60 @@ def start(message):
                             'answerTime': 'Ignored',
                         }
                     }
-                    response_sheety = requests.put(url=sheety_endpoint + '/' + str(object_person['id']), json=sheety_params, headers=headers_sheety)
+                    response_sheety = requests.put(url=sheety_endpoint + '/' + str(object_person['id']),
+                                                   json=sheety_params, headers=headers_sheety)
                     # call to manager
                     message_to_manager = object_person['test'] + ' ' + str(object_person['telId']) + ' Ignored'
                     bot.send_message(MANAGER_TEL_ID, message_to_manager, reply_markup=start_markup())
 
-                message_to_user = object_person['test'] + ' ' + object_person['date'] + ' ' + object_person[
-                    'time'] + ' ' + str(object_person['answerTime'])
-                bot.send_message(int(object_person['telId']), message_to_user, reply_markup=btn_yes_no())
+                if object_person['answerTime'] not in ['Send', 'Ignored']:
+                    message_to_user = object_person['test'] + ' ' + object_person['date'] + ' ' + object_person[
+                        'time'] + ' ' + str(object_person['answerTime'])
+                    bot.send_message(int(object_person['telId']), message_to_user,
+                                     reply_markup=btn_yes_no(object_person['id']))
+                    sheety_params = {
+                        'sheet1': {
+                            'answerTime': 'Send',
+                        }
+                    }
+                    response_sheety = requests.put(url=sheety_endpoint + '/' + str(object_person['id']),
+                                                   json=sheety_params,
+                                                   headers=headers_sheety)
         time.sleep(10)
 
 
 @bot.callback_query_handler(func=lambda call: True)
 def function(call):
-    if call.data == 'Да':
-        message_to_user = 'Да!'
-        bot.send_message(call.message.chat.id, message_to_user, reply_markup=start_markup())
-    elif call.data == 'Нет':
-        message_to_user = 'Нет!'
-        bot.send_message(call.message.chat.id, message_to_user, reply_markup=start_markup())
+    splitted_data = call.data.split(' ')
+    id_data = splitted_data[0]
+    answer = splitted_data[1]
 
+    response_sheety = requests.get(url=sheety_endpoint, headers=headers_sheety)
+    notification_array = response_sheety.json()['sheet1']
+    message_to_manager = ''
+    for object_person in notification_array:
+        if object_person['id'] == id_data:
+            message_to_manager = object_person['test'] + ' ' + str(object_person['telId'])
+
+    if answer == 'YES':
+        sheety_params = {
+            'sheet1': {
+                'answerTime': 'Done',
+            }
+        }
+        message_to_manager += ' Done'
+    elif answer == 'NO':
+        sheety_params = {
+            'sheet1': {
+                'answerTime': 'Not Done',
+            }
+        }
+        message_to_manager += ' Not Done'
+
+    response_sheety = requests.put(url=sheety_endpoint + '/' + id_data, json=sheety_params,
+                                   headers=headers_sheety)
+    # call to manager
+    bot.send_message(MANAGER_TEL_ID, message_to_manager, reply_markup=start_markup())
 
 
 # while True:
